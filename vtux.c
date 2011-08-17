@@ -529,7 +529,7 @@ void testrandom()
 
 void cls()
 {
-    system("cls");
+    system("clear");
 //    printf("\f");
 }
 
