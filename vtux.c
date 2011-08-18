@@ -118,7 +118,7 @@ char * readtextfromfile(int maxchars,char separator)
     if (!target) {printf("Memory allocation failed!\n");return 0;}//return 0 and print error if alloc failed
 
     ch=getc(inputfile);
-    if (ch==separator){free(target);return NULL;}//if field is blank (zero-length), return null pointer
+    if (ch==separator||ch==EOF){free(target);return NULL;}//if field is blank (zero-length), return null pointer (||EOF added because it hangs on blank database)
     while (isspace(ch))
     {
         ch = getc(inputfile);//cycle forward until you reach text
