@@ -5,6 +5,15 @@
 #include <ctype.h>
 #include <string.h>
 
+#ifdef _WIN32
+# define CLEARCOMMAND "cls"
+#elif defined __unix__
+# define CLEARCOMMAND "clear"
+#else
+# error "Could not detect OS. Clear screen may not work."
+# define CLEARCOMMAND "cls"
+#endif
+
 #define DINPUTFILENAME "vtdb.~sv"
 #define DOUTPUTFILENAME "vtdb.~sv"
 #define MAXINTVALUE 2147483647
@@ -52,9 +61,9 @@ int writeliststofile();//save
 void testme();//main code for learning vocab, including options menu
 char * gettextfromkeyboard(char * target,int maxchars);//set given string (char pointer) from keyboard, allocating memory if necessary
 int getyesorno();//asks for yes or no, returns true (1) if yes
-void wank();
-void testrandom();//code keeps causing exceptions, and as it's so random, I'm guessing it's to do with the random numbers
-void cls();//clears the screen UNPORTABLY!! but at least only this one function has to be rewritten to make the program portable
+void wank();//prints a random number from 1-12... obviously :-p
+void testrandom();//code keeps causing exceptions (now fixed), and as it's so random, I'm guessing it's to do with the random numbers
+void clrscr();//clears the screen. Now with #ifdef preprocessor script for portability!!
 void clearinputbuffer();//clears the input buffer after each request for input, so that the following request is not getting the overflow
 
 void getrecordsfromfile(char * inputfilename,char separator)
@@ -301,7 +310,7 @@ void testme()
     while (testagain)
     {
         //debug:fprintf(stderr,"Start of 'testagain' loop\nClearing screen...\n");
-        cls();
+        clrscr();
 
         //select a list at random, using the percentage probabilities in the if statements. FISH! Can this be done with a switch and ranges?
         //debug:fprintf(stderr,"Assigning list selector to random value...");
@@ -415,7 +424,7 @@ void testme()
         //debug:fprintf(stderr,"cleared getchar\n");
         while (bringupmenu)
         {
-            cls();
+            clrscr();
             printf("Current Entry:\n\nQuestion: %s\nAnswer: '%s'\n",currententry->question,currententry->answer);
             if (currententry->info) printf("Info: %s\n",currententry->info); else printf("No info.\n");
             if (currententry->hint) printf("Hint: %s\n\n",currententry->hint); else printf("No hint.\n\n");
@@ -467,7 +476,7 @@ void testme()
         }
         //debug:fprintf(stderr,"End of 'testagain' loop.\n Clearing Screen...");
 //        system("cls");
-        cls();
+        clrscr();
 //        printf("\f");
     }
     free(youranswer);
@@ -527,9 +536,9 @@ void testrandom()
     return;
 }
 
-void cls()
+void clrscr()
 {
-    system("clear");
+    system(CLEARCOMMAND);
 //    printf("\f");
 }
 
@@ -587,11 +596,11 @@ int main(int argc, char* argv[])
             case 'w': testrandom(); break;
             default: printf("Invalid choice. Please try again.\n"); clearinputbuffer(); break;
         }
-        cls();
+        clrscr();
     }
 
 
-    cls();
+    clrscr();
     printf("Bye for now!\n\nPress enter to exit.");
     getchar();
     //debug:fprintf(stderr,"Successfully closed\n");
