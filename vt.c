@@ -1,9 +1,9 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <process.h>
-#include <ctype.h>
-#include <string.h>
+#include "process.h"
+#include "ctype.h"
+#include "string.h"
 
 #ifdef _WIN32
 # define CLEARCOMMAND "cls"
