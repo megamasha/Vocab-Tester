@@ -1,9 +1,9 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "process.h"
-#include "ctype.h"
-#include "string.h"
+#include <process.h>
+#include <ctype.h>
+#include <string.h>
 
 #define DINPUTFILENAME "vtdb.~sv"
 #define DOUTPUTFILENAME "vtdb.~sv"
