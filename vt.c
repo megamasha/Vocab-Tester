@@ -1,9 +1,17 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <process.h>
 #include <ctype.h>
 #include <string.h>
+
+#ifdef _WIN32
+# define CLEARCOMMAND "cls"
+#elif defined __unix__
+# define CLEARCOMMAND "clear"
+#else
+# error "Could not detect OS. Clear screen may not work."
+# define CLEARCOMMAND "cls"
+#endif 
 
 #define DINPUTFILENAME "vtdb.~sv"
 #define DOUTPUTFILENAME "vtdb.~sv"
@@ -52,9 +60,9 @@ int writeliststofile();//save
 void testme();//main code for learning vocab, including options menu
 char * gettextfromkeyboard(char * target,int maxchars);//set given string (char pointer) from keyboard, allocating memory if necessary
 int getyesorno();//asks for yes or no, returns true (1) if yes
-void wank();
-void testrandom();//code keeps causing exceptions, and as it's so random, I'm guessing it's to do with the random numbers
-void cls();//clears the screen UNPORTABLY!! but at least only this one function has to be rewritten to make the program portable
+void wank();//prints a random number from 1-12... obviously :-p
+void testrandom();//code keeps causing exceptions (now fixed), and as it's so random, I'm guessing it's to do with the random numbers
+void clrscr();//clears the screen. Now with #ifdef preprocessor script for portability!! 
 void clearinputbuffer();//clears the input buffer after each request for input, so that the following request is not getting the overflow
 
 void getrecordsfromfile(char * inputfilename,char separator)
@@ -296,12 +304,13 @@ void testme()
     char * youranswer = (char *)malloc(MAXTEXTLENGTH+1);
     struct listinfo * currentlist;
     struct vocab * currententry;
+    printf("%i",__LINE__);
     if (!youranswer) {printf("Memory allocation error!\n");return;}
 
     while (testagain)
     {
         //debug:fprintf(stderr,"Start of 'testagain' loop\nClearing screen...\n");
-        cls();
+        clrscr();
 
         //select a list at random, using the percentage probabilities in the if statements. FISH! Can this be done with a switch and ranges?
         //debug:fprintf(stderr,"Assigning list selector to random value...");
@@ -415,7 +424,7 @@ void testme()
         //debug:fprintf(stderr,"cleared getchar\n");
         while (bringupmenu)
         {
-            cls();
+            clrscr();
             printf("Current Entry:\n\nQuestion: %s\nAnswer: '%s'\n",currententry->question,currententry->answer);
             if (currententry->info) printf("Info: %s\n",currententry->info); else printf("No info.\n");
             if (currententry->hint) printf("Hint: %s\n\n",currententry->hint); else printf("No hint.\n\n");
@@ -436,7 +445,7 @@ void testme()
                 case 'h': printf("Enter new hint for this entry (max %i chars):\n",maxtextlength);
                            currententry->hint=gettextfromkeyboard(currententry->hint,MAXTEXTLENGTH);
                            break;
-                case 'p': if(currentlist=&n2l)printf("Already marked as priority!\n");
+		case 'p': if(currentlist==&n2l)printf("Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
                            else
                            {
                                removefromlist(currententry,currentlist,0);
@@ -467,7 +476,7 @@ void testme()
         }
         //debug:fprintf(stderr,"End of 'testagain' loop.\n Clearing Screen...");
 //        system("cls");
-        cls();
+        clrscr();
 //        printf("\f");
     }
     free(youranswer);
@@ -480,11 +489,12 @@ char * gettextfromkeyboard(char * target,int maxchars)
     int i =0;
     int memoryallocated_flag =0; //to avoid freeing memory allocated outside function, pointed out by stackoverflow.com/users/688213/mrab
     char ch;
+    fprintf(stderr,"gettextfromkeyboard started line %i",__LINE__);
     if (!target)//if no memory already allocated (pointer is NULL), do it now
     {
-        memoryallocated_flag=1;
-        target=(char *)malloc(maxchars+1);
-        if (!target) {printf("Memory allocation failed!");return NULL;} //return null if failed
+        memoryallocated_flag=1;printf("%i",__LINE__);
+        target=(char *)malloc(maxchars+1);printf("%i",__LINE__);
+        if (!target) {printf("Memory allocation failed!");return NULL;} printf("%i",__LINE__);//return null if failed
     }
     ch = getchar();
     if (ch=='\n' && memoryallocated_flag) {free(target);return NULL;}//if zero length, free mem (if allocated inside function) and return null pointer
@@ -527,9 +537,9 @@ void testrandom()
     return;
 }
 
-void cls()
+void clrscr()
 {
-    system("clear");
+    system(CLEARCOMMAND);
 //    printf("\f");
 }
 
@@ -548,7 +558,7 @@ void clearinputbuffer()
 int main(int argc, char* argv[])
 {
     char * inputfilename = DINPUTFILENAME;
-    char * outputfilename = DOUTPUTFILENAME;
+//    char * outputfilename = DOUTPUTFILENAME; //TODO not implemented yet
     char separator = '~';
     char menuchoice = '\0';
     n2l.entries = norm.entries = known.entries = old.entries = 0;
@@ -587,11 +597,11 @@ int main(int argc, char* argv[])
             case 'w': testrandom(); break;
             default: printf("Invalid choice. Please try again.\n"); clearinputbuffer(); break;
         }
-        cls();
+        clrscr();
     }
 
 
-    cls();
+    clrscr();
     printf("Bye for now!\n\nPress enter to exit.");
     getchar();
     //debug:fprintf(stderr,"Successfully closed\n");
