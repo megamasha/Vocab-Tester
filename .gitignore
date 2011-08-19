@@ -2,3 +2,5 @@
 *.obj
 *~
 err*
+vt
+*.exe
