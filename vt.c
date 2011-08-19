@@ -157,15 +157,15 @@ int readnumberfromfile (int maxvalue,char separator)
 {
     int number, i=0;
     char ch;
-    char * buff = (char *)malloc(11);
+    char * buff = (char *)malloc(11);//allocate enough space for an 10-digit number and a terminating null
     if (!buff) {printf("Memory allocation failed!\n");return 0;}//return 0 and print error if alloc failed
     if (!maxvalue) maxvalue=MAXINTVALUE;
 
     ch=getc(inputfile);
     while (!isdigit(ch))
     {
+        if (ch == separator||ch=='\n'||ch==EOF) {fprintf(stderr,"Format error in file\n");return 0;}//if no number found(reached separator before digit), print error and return 0
         ch = getc(inputfile);//cycle forward until you reach a digit
-        if (ch == separator||ch=='\n'||ch==EOF) {printf("Format error in file\n");return 0;}//if no number found(reached ~ before digit), print error and return 0
     }
     while (i<11 && ch!=separator && ch!='\n')//stop when you reach '~', end of line, or when number too long
     {
@@ -304,7 +304,7 @@ void testme()
     char * youranswer = (char *)malloc(MAXTEXTLENGTH+1);
     struct listinfo * currentlist;
     struct vocab * currententry;
-    printf("%i",__LINE__);
+    //debug:printf("%i",__LINE__);
     if (!youranswer) {printf("Memory allocation error!\n");return;}
 
     while (testagain)
@@ -445,7 +445,7 @@ void testme()
                 case 'h': printf("Enter new hint for this entry (max %i chars):\n",maxtextlength);
                            currententry->hint=gettextfromkeyboard(currententry->hint,MAXTEXTLENGTH);
                            break;
-		case 'p': if(currentlist==&n2l)printf("Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
+                case 'p': if(currentlist==&n2l)printf("Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
                            else
                            {
                                removefromlist(currententry,currentlist,0);
@@ -488,13 +488,12 @@ char * gettextfromkeyboard(char * target,int maxchars)
 {
     int i =0;
     int memoryallocated_flag =0; //to avoid freeing memory allocated outside function, pointed out by stackoverflow.com/users/688213/mrab
-    char ch;
-    fprintf(stderr,"gettextfromkeyboard started line %i",__LINE__);
+    char ch;//debug:fprintf(stderr,"gettextfromkeyboard started line %i",__LINE__);
     if (!target)//if no memory already allocated (pointer is NULL), do it now
     {
-        memoryallocated_flag=1;printf("%i",__LINE__);
-        target=(char *)malloc(maxchars+1);printf("%i",__LINE__);
-        if (!target) {printf("Memory allocation failed!");return NULL;} printf("%i",__LINE__);//return null if failed
+        memoryallocated_flag=1;//debug:printf("%i",__LINE__);
+        target=(char *)malloc(maxchars+1);//debug:printf("%i",__LINE__);
+        if (!target) {printf("Memory allocation failed!");return NULL;} //debug:printf("%i",__LINE__);//return null if failed
     }
     ch = getchar();
     if (ch=='\n' && memoryallocated_flag) {free(target);return NULL;}//if zero length, free mem (if allocated inside function) and return null pointer
@@ -539,19 +538,20 @@ void testrandom()
 
 void clrscr()
 {
-    system(CLEARCOMMAND);
+    system(CLEARCOMMAND); //TODO
 //    printf("\f");
 }
 
 void clearinputbuffer()
 {
+//    while (getchar()!='\n') getchar();
     char tempchar;
     if (getchar()=='\n') return;
     else while (1)
     {
         tempchar = getchar();
         if (tempchar=='\n') break;
-    }
+    } //TODO
     return;
 }
 
