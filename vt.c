@@ -49,7 +49,8 @@ FILE * inputfile = NULL;
 FILE * outputfile = NULL;
 static struct listinfo n2l, norm, known, old;
 
-void getrecordsfromfile(char * inputfilename,char separator);//load
+void loaddatabase();//select which database to load and pass it to getrecordsfromfile
+void getrecordsfromfile(char * inputfilename,char separator);//load a file into memory
 char * readtextfromfile(int maxchars,char separator);//get text field from file
 int readnumberfromfile(int maxvalue,char separator);//get integer field from file
 struct vocab * addtolist(struct vocab * newentry, struct listinfo * list);//add given (already filled in) vocab record to given list
@@ -63,6 +64,32 @@ void wank();//prints a random number from 1-12... obviously :-p
 void testrandom();//code keeps causing exceptions (now fixed), and as it's so random, I'm guessing it's to do with the random numbers
 void clrscr();//clears the screen. Now with #ifdef preprocessor script for portability!! 
 void clearinputbuffer();//clears the input buffer after each request for input, so that the following request is not getting the overflow
+
+void loaddatabase()//select which database to load
+{
+    char separator = '~';
+    char * deffilename = DINPUTFILENAME;
+    char * inputfilename = (char *)malloc(MAXTEXTLENGTH+1);
+    if (!inputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
+    strcpy(inputfilename,deffilename);
+    printf("Loading...\nLoad default database: %s? (y/n)",inputfilename);
+    if (!getyesorno())
+    {
+        printf("Default file type is .~sv. Import .csv file instead? (y/n)");
+        if (getyesorno())
+        {
+            separator = ',';
+            printf("Enter name of .csv file to import:\n");
+        }
+        else
+        {
+            printf("Enter name of .~sv file to load:\n");
+        }
+        inputfilename = gettextfromkeyboard(inputfilename,MAXTEXTLENGTH);
+    }
+    getrecordsfromfile(inputfilename,separator);
+    free(inputfilename);
+}
 
 void getrecordsfromfile(char * inputfilename,char separator)
 {
@@ -341,7 +368,7 @@ void testme()
         if (currentlist->entries==0) currentlist = &known;//in the other 90% of cases, or if old is empty, use the known list
         if (currentlist->entries==0) currentlist = &old;//if known list is empty, try the old list
         if (currentlist->entries==0) {currentlist = &n2l;n2l_flag=1;}//if old list is empty, use n2l list EVEN if it was used last time
-        if (currentlist->entries==0) {printf("No entries in list!");return;} //if list is STILL empty, abort
+        if (currentlist->entries==0) {printf("No entries in list!\n\n");return;} //if list is STILL empty, abort
         //debug:fprintf(stderr,"modified list pointer\nAssigning entry selector...");
 
         //we now have the desired list of words with at least one entry, let's select an entry at random from this list
@@ -566,33 +593,14 @@ void clearinputbuffer()
 
 int main(int argc, char* argv[])
 {
-    char * inputfilename = DINPUTFILENAME;
 //    char * outputfilename = DOUTPUTFILENAME; //TODO not implemented yet
-    char separator = '~';
     char menuchoice = '\0';
     n2l.entries = norm.entries = known.entries = old.entries = 0;
 
     srand((unsigned)time(NULL));
 
     //debug:fprintf(stderr,"Start...\n");
-    printf("Loading...\nLoad default database? (y/n)");
-    if (!getyesorno())
-    {
-        printf("Default file type is .~sv. Import .csv file instead? (y/n)");
-        if (getyesorno())
-        {
-            separator = ',';
-            printf("Enter name of .csv file to import:\n");
-        }
-        else
-        {
-            printf("Enter name of .~sv file to load:\n");
-        }
-        inputfilename = gettextfromkeyboard(inputfilename,256);
-    }
-    getrecordsfromfile(inputfilename,separator);
-
-
+    loaddatabase();
     while (menuchoice!='x')
     {
         printf("Welcome to the Vocab Test, version C!\n\nMain menu:\n\n\tt: Test Me!\n\ts: Save\n\tx: Exit\n\n");
@@ -613,6 +621,7 @@ int main(int argc, char* argv[])
     clrscr();
     printf("Bye for now!\n\nPress enter to exit.");
     getchar();
+    clrscr();
     //debug:fprintf(stderr,"Successfully closed\n");
     return 0;
 }
