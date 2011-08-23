@@ -56,13 +56,13 @@ int readnumberfromfile(int maxvalue,char separator);//get integer field from fil
 struct vocab * addtolist(struct vocab * newentry, struct listinfo * list);//add given (already filled in) vocab record to given list
 int removefromlist(struct vocab * entry, struct listinfo * list,int freeup);//remove given entry from given list. Also destroy record if freeup is true
 void reindex (struct listinfo * list);//necessary to stop gaps in the numbering system, which could cause random vocab selection to fail
-int writeliststofile();//save
+void savedatabase();//does what it says on the tin, optionally allows user to give filename, which is passed to writeliststofile
+int writeliststofile(char * outputfilename);//output a file from memory to disk
 void testme();//main code for learning vocab, including options menu
 char * gettextfromkeyboard(char * target,int maxchars);//set given string (char pointer) from keyboard, allocating memory if necessary
 int getyesorno();//asks for yes or no, returns true (1) if yes
 void wank();//prints a random number from 1-12... obviously :-p
-void testrandom();//code keeps causing exceptions (now fixed), and as it's so random, I'm guessing it's to do with the random numbers
-void clrscr();//clears the screen. Now with #ifdef preprocessor script for portability!! 
+void clrscr();//clears the screen. Now with #ifdef preprocessor script for portability!!
 void clearinputbuffer();//clears the input buffer after each request for input, so that the following request is not getting the overflow
 
 void loaddatabase()//select which database to load
@@ -73,19 +73,29 @@ void loaddatabase()//select which database to load
     if (!inputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
     strcpy(inputfilename,deffilename);
     printf("Loading...\nLoad default database: %s? (y/n)",inputfilename);
-    if (!getyesorno())
+    if (!getyesorno())//import user specified database
     {
-        printf("Default file type is .~sv. Import .csv file instead? (y/n)");
-        if (getyesorno())
-        {
-            separator = ',';
-            printf("Enter name of .csv file to import:\n");
-        }
-        else
+        printf("Default file type is .~sv. Load .~sv file? (y/n)");
+        if (getyesorno()) //import .~sv file
         {
             printf("Enter name of .~sv file to load:\n");
         }
-        inputfilename = gettextfromkeyboard(inputfilename,MAXTEXTLENGTH);
+        else //alternative options
+        {
+            printf("Import .csv file instead?");
+            if (getyesorno()) //import .csv file
+            {
+                separator = ',';
+                printf("Enter name of .csv file to import:\n");
+            }
+            else //not loading a file
+            {
+                printf("No database file selected. No database loaded!\n");
+                free(inputfilename);
+                return;
+            }
+        }
+        gettextfromkeyboard(inputfilename,MAXTEXTLENGTH);
     }
     getrecordsfromfile(inputfilename,separator);
     free(inputfilename);
@@ -285,12 +295,27 @@ void reindex (struct listinfo * list)
     if (list->entries!=counter-1) printf("Reindexing Error!\n");
 }
 
-int writeliststofile()
+void savedatabase()
+{
+    char * deffilename = DOUTPUTFILENAME;
+    char * outputfilename = (char *)malloc(MAXTEXTLENGTH+1);
+    if (!outputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
+    strcpy(outputfilename,deffilename);
+    printf("WARNING: If you provide a database filename that already exists,\nthe database will be OVERWRITTEN!\n\nSave to default database: %s? (y/n)",outputfilename);
+    if (!getyesorno())//user specifies filename for database output
+    {
+        printf("A .~sv file will be saved to the filename you provide.\nPlease enter the filename, ending in '.~sv':\n");
+        gettextfromkeyboard(outputfilename,MAXTEXTLENGTH); //FISH TODO filename validation
+    }
+    if (!writeliststofile(outputfilename)) printf("Error while saving!!\n"); //print error message if writeliststofile returned 0
+}
+
+int writeliststofile(char * outputfilename)
 {
     int i,counter=0;
     struct listinfo * list;
     struct vocab * entry;
-    if (!(outputfile = fopen(DOUTPUTFILENAME, "w")))
+    if (!(outputfile = fopen(outputfilename, "w")))
     {
         printf ("Error accessing output file!\n");
         return 0;
@@ -566,16 +591,9 @@ void wank()
     getchar();
 }
 
-void testrandom()
-{
-    
-    return;
-}
-
 void clrscr()
 {
-    system(CLEARCOMMAND); //TODO
-//    printf("\f");
+    system(CLEARCOMMAND);
 }
 
 void clearinputbuffer()
@@ -587,18 +605,18 @@ void clearinputbuffer()
     {
         tempchar = getchar();
         if (tempchar=='\n') break;
-    } //TODO
+    } //FISH TODO
     return;
 }
 
 int main(int argc, char* argv[])
 {
-//    char * outputfilename = DOUTPUTFILENAME; //TODO not implemented yet
-    char menuchoice = '\0';
     n2l.entries = norm.entries = known.entries = old.entries = 0;
+    char menuchoice = '\0';
 
     srand((unsigned)time(NULL));
 
+    clrscr();
     //debug:fprintf(stderr,"Start...\n");
     loaddatabase();
     while (menuchoice!='x')
@@ -610,8 +628,7 @@ int main(int argc, char* argv[])
         {
             case 'x': break;
             case 't': testme(); break;
-            case 's': writeliststofile();break;
-            case 'w': testrandom(); break;
+            case 's': savedatabase();break;
             default: printf("Invalid choice. Please try again.\n"); clearinputbuffer(); break;
         }
         clrscr();
