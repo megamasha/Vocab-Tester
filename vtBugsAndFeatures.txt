@@ -1,0 +1,15 @@
+Vocab Tester:
+
+:-) Save to given filename
+:-) Load from main menu
+:-) Add entries
+:-) Hints!
+:-) continue testing from options menu
+:-) Fix saving of actual null values
+:-) calculate score
+:-) look into .csv file loading
+    validate filenames
+    Ask about saving on exit
+    Save to most recently opened database
+    Find and edit (including delete) entries from the database manager
+    Can list selection be done with a switch and ranges?

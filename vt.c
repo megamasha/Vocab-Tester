@@ -21,7 +21,7 @@
 #define NORMTON2L 3
 #define NORMTOKNOWN 5
 #define KNOWNTONORM 2
-#define KNOWNTOOLD 2
+#define KNOWNTOOLD 3
 #define OLDTONORM 1
 
 struct vocab
@@ -33,7 +33,7 @@ struct vocab
     char * hint;//pointer to optional text giving a clue to the answer
     int right;//indicates whether counter is counting correct or incorrect responses
     int counter;//counts how many times in a row the answer has been correct/incorrect
-    int known;//indicates to what level the vocab is known, and thus to which list it belongs (when loading/saving)
+    int known;//indicates to what level the vocab is known, and thus to which list it belongs
     struct vocab * next;//pointer to next in list
 };
 
@@ -55,15 +55,20 @@ char * readtextfromfile(int maxchars,char separator);//get text field from file
 int readnumberfromfile(int maxvalue,char separator);//get integer field from file
 struct vocab * addtolist(struct vocab * newentry, struct listinfo * list);//add given (already filled in) vocab record to given list
 int removefromlist(struct vocab * entry, struct listinfo * list,int freeup);//remove given entry from given list. Also destroy record if freeup is true
+int unloaddatabase();//clears all vocab from memory, ready to load another database
+void reloaddatabase();//optionally saves and unloads present database before loading another 
 void reindex (struct listinfo * list);//necessary to stop gaps in the numbering system, which could cause random vocab selection to fail
 void savedatabase();//does what it says on the tin, optionally allows user to give filename, which is passed to writeliststofile
 int writeliststofile(char * outputfilename);//output a file from memory to disk
+void databasemenu();//provides ability to add entries to database, and edit entries from outside testing mode
+struct vocab * createnewvocab();//allows user to create now vocab record within the program
+int editormenu(struct vocab * entry, int fromtest);//shows menu to edit current entry, fromtest is 1 when run from within the test and 0 when from the menu, returns 1 to be run again, 0 to continue without the menu or -1 to return to the main menu
 void testme();//main code for learning vocab, including options menu
 char * gettextfromkeyboard(char * target,int maxchars);//set given string (char pointer) from keyboard, allocating memory if necessary
 int getyesorno();//asks for yes or no, returns true (1) if yes
-void wank();//prints a random number from 1-12... obviously :-p
 void clrscr();//clears the screen. Now with #ifdef preprocessor script for portability!!
 void clearinputbuffer();//clears the input buffer after each request for input, so that the following request is not getting the overflow
+float calculatescore(int showstats);//returns overall idea of progress as percentage, displays screenful of stats if 'showstats' is true
 
 void loaddatabase()//select which database to load
 {
@@ -82,7 +87,7 @@ void loaddatabase()//select which database to load
         }
         else //alternative options
         {
-            printf("Import .csv file instead?");
+            printf("Import .csv file instead? (y/n)");
             if (getyesorno()) //import .csv file
             {
                 separator = ',';
@@ -103,7 +108,7 @@ void loaddatabase()//select which database to load
 
 void getrecordsfromfile(char * inputfilename,char separator)
 {
-    int counter = 0;
+    int goodcounter = 0,badcounter = 0;
     struct vocab * newvocab;
     struct listinfo * newvocablist;
     if (!(inputfile = fopen(inputfilename, "r")))
@@ -123,6 +128,7 @@ void getrecordsfromfile(char * inputfilename,char separator)
             }
             else
             {
+                newvocab->question=newvocab->answer=newvocab->info=newvocab->hint=NULL;
                 newvocab->question=readtextfromfile(MAXTEXTLENGTH,separator);
                 newvocab->answer=readtextfromfile(MAXTEXTLENGTH,separator);
                 newvocab->info=readtextfromfile(MAXTEXTLENGTH,separator);
@@ -142,14 +148,15 @@ void getrecordsfromfile(char * inputfilename,char separator)
                 addtolist(newvocab,newvocablist);
                 if (newvocab->question==NULL||newvocab->answer==NULL)
                 {
-                    printf("Removing empty vocab record created from faulty input file...\n");
+                    badcounter++;
+                    printf("Removing faulty vocab record (%d) created at line %i of input file...\n",badcounter,(goodcounter+badcounter));
                     removefromlist(newvocab,newvocablist,1);
                 }
-                else counter++;
+                else goodcounter++;
             }
         }
         fclose(inputfile);
-        printf("...finished.\n%i entries read from %s.\n\n",counter,inputfilename);
+        printf("...finished.\n%i entries read from %s.\n%i faulty entries encountered.\n\n",goodcounter,inputfilename,badcounter);
     }
     return;
 }
@@ -166,7 +173,7 @@ char * readtextfromfile(int maxchars,char separator)
     while (isspace(ch))
     {
         ch = getc(inputfile);//cycle forward until you reach text
-        if (ch == separator||ch=='\n'||ch==EOF) {free(target);return NULL;}//if no text found(reached ~ before anything else), return null pointer
+        if (ch == separator||ch=='\n'||ch==EOF) {free(target);return NULL;}//if no text found(reached separator before anything else), return null pointer
     }
     if (ch=='"') //Entry is in quotes (generated by excel when exporting to .csv and field contains a comma)
     {
@@ -176,6 +183,7 @@ char * readtextfromfile(int maxchars,char separator)
             target[i++]=ch;
             ch = getc(inputfile); //copy name from file to target, one char at a time
         }
+        ch=getc(inputfile);//consume separator that follows quotes, so next field does not appear empty (this was a bug... SQEESH!)
     }
     else //entry is not in quotes, so char is currently first letter of string
     {
@@ -200,7 +208,7 @@ int readnumberfromfile (int maxvalue,char separator)
     ch=getc(inputfile);
     while (!isdigit(ch))
     {
-        if (ch == separator||ch=='\n'||ch==EOF) {fprintf(stderr,"Format error in file\n");free(buff);return 0;}//if no number found(reached separator before digit), print error, free buff and return 0
+        if (ch == separator||ch=='\n'||ch==EOF) {fprintf(stderr,"Format error or field missing in file\nExpected number, but found '%c'. Replacing with '0'\n",separator,ch);free(buff);return 0;}//if no number found(reached separator before digit), print error, free buff and return 0
         ch = getc(inputfile);//cycle forward until you reach a digit
     }
     while (i<10 && ch!=separator && ch!='\n')//stop when you reach separator, end of line, or when number too long
@@ -220,7 +228,7 @@ struct vocab * addtolist(struct vocab * newentry, struct listinfo * list)
     {
         list->head = list->tail = newentry;//this is the new head and tail
         list->entries = newentry->index = 1;
-        newentry->next = NULL;// FISH! not sure if this is necessary, but just be sure...
+        newentry->next = NULL;
     }
     else//just appending to the list
     {
@@ -229,6 +237,13 @@ struct vocab * addtolist(struct vocab * newentry, struct listinfo * list)
         newentry->index=++list->entries;
         newentry->next = NULL;
     }
+    //give the entry the appropriate 'known' level for this list (for calculating scores, and deducing which list its in without searching)
+    if (list==&n2l) newentry->known = 0;
+    else if (list==&norm) newentry->known = 1;
+    else if (list==&known) newentry->known = 2;
+    else if (list==&old) newentry->known = 3;
+    else {fprintf(stderr,"Unable to correctly add vocab entry to list!");return NULL;}
+
     return newentry;
 }
 
@@ -274,12 +289,38 @@ int removefromlist(struct vocab * entry, struct listinfo * list,int freeup)
     reindex(list);
     if (freeup) //if freeup is set, this also wipes the record and frees up the memory associated with it
     {
-        free(entry->question);
-        free(entry->answer);
-        free(entry->info);
-        free(entry->hint);
-        free(entry);
+        if(entry->question) free(entry->question);
+        if(entry->answer) free(entry->answer);
+        if(entry->info) free(entry->info);
+        if(entry->hint) free(entry->hint);
+        if(entry) free(entry);
     }
+    return 1;
+}
+
+int unloaddatabase()
+{
+    int l = 0,counter = 0;
+    struct vocab * entry;
+    struct listinfo * list; //assigned by switch with l, cycles through all the lists
+    for (;l<=3;l++)
+    {
+        switch (l)
+        {
+            case 0: {list = &n2l;break;}
+            case 1: {list = &norm;break;}
+            case 2: {list = &known;break;}
+            case 3: {list = &old;break;}
+            default: {fprintf(stderr,"List pointer error!\n");return 0;}
+        }
+        while (list->head!=NULL)
+        {
+            entry = list->head;
+            removefromlist(entry,list,1);
+            counter++;
+        }
+    }
+    printf("Unloaded %i entries from memory.\n",counter);
     return 1;
 }
 
@@ -295,19 +336,32 @@ void reindex (struct listinfo * list)
     if (list->entries!=counter-1) printf("Reindexing Error!\n");
 }
 
+void reloaddatabase()//optionally saves and unloads present database before loading another
+{
+    printf("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n");
+    if (getyesorno()) savedatabase();
+    printf("Do you want to unload the current database from memory before loading a new one?\nIf you do not, the current database and the one you are loading will be merged,\nwhich could cause duplicates.\n");
+    if (getyesorno()) unloaddatabase();
+    loaddatabase();
+    clearinputbuffer();
+}
+
 void savedatabase()
 {
     char * deffilename = DOUTPUTFILENAME;
     char * outputfilename = (char *)malloc(MAXTEXTLENGTH+1);
+    printf("Saving...\n");
     if (!outputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
     strcpy(outputfilename,deffilename);
     printf("WARNING: If you provide a database filename that already exists,\nthe database will be OVERWRITTEN!\n\nSave to default database: %s? (y/n)",outputfilename);
     if (!getyesorno())//user specifies filename for database output
     {
         printf("A .~sv file will be saved to the filename you provide.\nPlease enter the filename, ending in '.~sv':\n");
-        gettextfromkeyboard(outputfilename,MAXTEXTLENGTH); //FISH TODO filename validation
+        gettextfromkeyboard(outputfilename,MAXTEXTLENGTH); //FISH! TODO filename validation
     }
     if (!writeliststofile(outputfilename)) printf("Error while saving!!\n"); //print error message if writeliststofile returned 0
+    free(outputfilename);
+    clearinputbuffer();
 }
 
 int writeliststofile(char * outputfilename)
@@ -337,7 +391,11 @@ int writeliststofile(char * outputfilename)
             while (entry!=NULL)
             {
                 if (counter) fprintf(outputfile,"\n");
-                fprintf(outputfile,"%s~%s~%s~%s~%i~%i~%i",entry->question,entry->answer,entry->info,entry->hint,entry->right,entry->counter,i);
+                fprintf(outputfile,"%s~%s~",entry->question,entry->answer);
+                if (entry->info) fprintf(outputfile,"%s",entry->info);
+                fprintf(outputfile,"~");
+                if (entry->hint) fprintf(outputfile,"%s",entry->hint);
+                fprintf(outputfile,"~%i~%i~%i",entry->right,entry->counter,i);
                 entry=entry->next;
                 counter++;
             }
@@ -348,99 +406,261 @@ int writeliststofile(char * outputfilename)
     }
 }
 
+void databasemenu()//provides ability to add entries to database, and edit entries from outside testing mode
+{
+    char menuchoice = '\n';
+    while (menuchoice!='x')
+    {
+        clrscr();
+        printf("Vocab database management menu:\n\n\ta: Add vocab\n\te: Edit vocab\n\td: Delete vocab\n\tx: Exit to main menu\n\n");
+        menuchoice = getchar();
+        clearinputbuffer();
+        switch (menuchoice)
+        {
+            case 'a': if (createnewvocab()) {printf("Vocab successfully added.");clearinputbuffer();}
+                      else {printf("Vocab creation failed!");clearinputbuffer();}
+                      break;
+            case 'e': printf("Todo!");clearinputbuffer();break;//FISH! TODO
+            case 'd': printf("Todo!");clearinputbuffer();break;//FISH! TODO
+            case 'x': break;
+            default: printf("Invalid choice. Please try again\n");clearinputbuffer();
+        }
+    }
+}
+
+struct vocab * createnewvocab()//allows user to create now vocab record within the program
+{
+    struct vocab * newvocab;
+    struct listinfo * newvocablist = &norm;
+    newvocab = (struct vocab *)malloc(sizeof(struct vocab));
+    if (!newvocab)
+    {
+        printf("Memory allocation failed!\n");
+        return NULL;
+    }
+    else
+    {
+        newvocab->question=newvocab->answer=newvocab->info=newvocab->hint=NULL;
+        printf("Enter question text for this entry (max %i chars):\n",maxtextlength);
+        newvocab->question=gettextfromkeyboard(newvocab->question,MAXTEXTLENGTH);
+        printf("Enter answer text for this entry (max %i chars):\n",maxtextlength);
+        newvocab->answer=gettextfromkeyboard(newvocab->answer,MAXTEXTLENGTH);
+        printf("Would you like to add additional info for this entry?(y/n)");
+        if (getyesorno())
+        {
+            printf("Enter info for this entry (max %i chars):\n",maxtextlength);
+            newvocab->info=gettextfromkeyboard(newvocab->info,MAXTEXTLENGTH);
+        }
+        else
+        {
+            newvocab->info=NULL;
+            printf("No info added\n");
+        }
+        printf("Would you like to add a hint to help you remember this entry?(y/n)");
+        if (getyesorno())
+        {
+            printf("Enter hint for this entry (max %i chars):\n",maxtextlength);
+            newvocab->hint=gettextfromkeyboard(newvocab->hint,MAXTEXTLENGTH);
+        }
+        else
+        {
+            newvocab->hint=NULL;
+            printf("No hint added\n");
+        }
+        newvocab->right=0;
+        newvocab->counter=0;
+        newvocab->known=1;
+
+        if (newvocab->question==NULL||newvocab->answer==NULL) //minimal validation for valid record
+        {
+            fprintf(stderr,"ERROR: Question and/or answer are blank!\n");
+        }
+
+        if (addtolist(newvocab,newvocablist)) return newvocab;
+        else return NULL;
+    }
+}
+
+int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current entry, fromtest is 1 when run from within the test and 0 when from the menu, returns 1 to show menu again, 0 to close the menu or -1 to return to the main menu
+{
+    struct listinfo * list;
+    char optionsmenuchoice = '\n';
+    int showagain = 1;
+    clrscr();
+    if (entry->known==0) list = &n2l;
+    else if (entry->known==1) list = &norm;
+    else if (entry->known==2) list = &known;
+    else if (entry->known==3) list = &old;
+    else {fprintf(stderr,"Unable to deduce list!!");exit(1);}
+    printf("Current Entry:\n\nQuestion: %s\nAnswer: '%s'\n",entry->question,entry->answer);
+    if (entry->info) printf("Info: %s\n",entry->info);else printf("No info.\n");
+    if (entry->hint) printf("Hint: %s\n\n",entry->hint);else printf("No hint.\n\n");
+    printf("Options Menu:\n\nType q to modify the question phrase displayed for translation.\nType a to change the answer phrase you must provide.\nType i to add/modify additional info for this entry.\nType h to add/modify the hint for this entry.\nType p to mark this entry as high priority to learn.\nType d to delete this entry from the database.\n");
+    if (fromtest) printf("Type t to close this menu and continue testing.\n");
+    else printf("Type r to return to the database management menu\n");
+    printf("Type x to ");
+    if (fromtest) printf("end testing and ");
+    printf("return to the main menu.\n\n");
+    optionsmenuchoice=getchar();
+    clearinputbuffer();
+    switch (optionsmenuchoice)
+    {
+        case 'q': printf("Enter new question text for this entry (max %i chars):\n",maxtextlength);
+        entry->question=gettextfromkeyboard(entry->question,MAXTEXTLENGTH);
+        break;
+        case 'a': printf("Enter new answer text for this entry (max %i chars):\n",maxtextlength);
+        entry->answer=gettextfromkeyboard(entry->answer,MAXTEXTLENGTH);
+        break;
+        case 'i': printf("Enter new info for this entry (max %i chars):\n",maxtextlength);
+        entry->info=gettextfromkeyboard(entry->info,MAXTEXTLENGTH);
+        break;
+        case 'h': printf("Enter new hint for this entry (max %i chars):\n",maxtextlength);
+        entry->hint=gettextfromkeyboard(entry->hint,MAXTEXTLENGTH);
+        break;
+        case 'p': if(list==&n2l)printf("Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
+                  else
+                  {
+                      removefromlist(entry,list,0);
+                      entry->counter = 0;
+                      list=&n2l;
+                      addtolist(entry,list);
+                      printf("This entry will be brought up more often\n");
+                  }
+                  break;
+        case 'd': printf("Are you sure you want to delete this entry?\nOnce you save, this will be permanent!(y/n)");
+                  if (getyesorno()) {removefromlist(entry,list,1);printf("Entry deleted!\n");return 0;}
+                  else printf("Entry was NOT deleted.\n");
+                  break;
+        case 'x': return -1;
+        break;
+        case 't': if (fromtest) return 0;
+                  else printf("You are not currently testing.\nReturn to the main menu and select 'Test me!'.\n");
+        break;
+        case 'r': if (fromtest) printf("Database management is not available from testing mode.\nReturn to the main menu and select 'Manage database'.\n");
+                  else return 0;
+        break;
+        default: printf("Invalid choice.\n");
+    }
+    printf("Select again from the options menu? (y/n)");
+    if (getyesorno()) return 1;
+    else
+    {
+        if (fromtest) printf("Continue testing?(y/n)"); else printf ("Return to database management menu?(y/n)");
+        if (getyesorno()) return 0; else return -1;
+    }
+}
+
 void testme()
 {
-    int list_selector=0, entry_selector=0, bringupmenu = 0, testagain=1;
+    int list_selector=0, entry_selector=0, bringupmenu = 0, testagain=1, menuresult=0, usedhint=0;
     int n2l_flag=0; //Prevents 'need to learn's coming up twice in a row
-    char testmenuchoice = '\n';
     struct listinfo * currentlist = NULL;
     struct vocab * currententry = NULL;
-    //debug:printf("%i",__LINE__);
+    char testmenuchoice = '\n';
     char * youranswer = (char *)malloc(MAXTEXTLENGTH+1);
     if (!youranswer) {printf("Memory allocation error!\n");return;}
 
     while (testagain)
     {
-        //debug:fprintf(stderr,"Start of 'testagain' loop\nClearing screen...\n");
         clrscr();
 
-        //select a list at random, using the percentage probabilities in the if statements. FISH! TODO Can this be done with a switch and ranges?
-        //debug:fprintf(stderr,"Assigning list selector to random value...");
+        //select a list at random, using the percentage probabilities in the if statements.
+        //FISH! Can this be done with a switch and ranges?
         list_selector = (rand() % 100)+1;
-        //debug:fprintf(stderr,"assigned list selector value %i\nAssigning list pointer...",list_selector);
         if (list_selector<33) currentlist = &n2l;
         if (list_selector>32&&list_selector<95) {n2l_flag=0;currentlist=&norm;} //use norm list and cancel n2l flag (not cancelled with other lists)
         if (list_selector>94&&list_selector<100) currentlist = &known;
         if (list_selector==100) currentlist = &old;
-        //debug:fprintf(stderr,"assigned list pointer %x\nModifying pointer...",currentlist);
 
         //do a little control over random selection
-        if (currentlist==&n2l 
-	  && n2l_flag)
-	{
+        if (currentlist==&n2l && n2l_flag)
+        {
 	    currentlist=&norm;
 	    n2l_flag=0; //if n2l list was used last time as well (flag is set), use entry from the norm list instead
 	}
-        if (currentlist==&n2l)
-	{
-	    n2l_flag = 1; //is using n2l this time, set flag so it won't be used next time as well
-	}
+        if (currentlist==&n2l) n2l_flag = 1; //is using n2l this time, set flag so it won't be used next time as well
 
-        if (currentlist->entries==0)
-	  currentlist = &norm;//if current list is empty, default to normal list
+        if (currentlist->entries==0) currentlist = &norm;//if current list is empty, default to normal list
         if (currentlist->entries==0 && !n2l_flag) currentlist = &n2l;//if normal list is empty, try n2l list if it wasn't used last time
         if (currentlist->entries==0 && list_selector%10==5) currentlist = &old;//if list is still empty, in 10% of cases try old list
         if (currentlist->entries==0) currentlist = &known;//in the other 90% of cases, or if old is empty, use the known list
         if (currentlist->entries==0) currentlist = &old;//if known list is empty, try the old list
         if (currentlist->entries==0) {currentlist = &n2l;n2l_flag=1;}//if old list is empty, use n2l list EVEN if it was used last time
-        if (currentlist->entries==0) {printf("No entries in list!\n\n");return;} //if list is STILL empty, abort
-        //debug:fprintf(stderr,"modified list pointer\nAssigning entry selector...");
+        if (currentlist->entries==0) {printf("No entries in list!\n\n");free(youranswer);clearinputbuffer();return;} //if list is STILL empty, abort
 
         //we now have the desired list of words with at least one entry, let's select an entry at random from this list
         entry_selector = (rand() % currentlist->entries)+1;
-        //debug:fprintf(stderr,"assigned entry selector value %i\nAssignig pointer...",entry_selector);
         currententry = currentlist->head;
-        //debug:fprintf(stderr,"set entry pointer to head, going to loop to it...\n");
         while (currententry->index!=entry_selector)
         {
             currententry = currententry->next;//move through list until index matches the random number
-            if (currententry==NULL) {printf("Indexing error!\nCurrent list selector: %i, entries: %i, entry selector: %i\n",list_selector,currentlist->entries,entry_selector);return;}//in case not found in list
+            if (currententry==NULL) {printf("Indexing error!\nCurrent list selector: %i, entries: %i, entry selector: %i\n",list_selector,currentlist->entries,entry_selector);free(youranswer);return;}//in case not found in list
         }
-        //debug:fprintf(stderr,"Looped, testing.\n");
 
         printf("Translate the following:\n\n\t%s\n\n",currententry->question);
         if (!currententry->info) printf("There is no additional information for this entry.\n");
         else printf("Useful Info: %s\n\n",currententry->info);
-        printf("Your Translation:\n\n\t");
+        if (!currententry->hint) printf("There is no hint available for this entry.\n");
+        else printf("There is a hint available for this entry. Type 'h' to view it.\nIf you view the hint, correct answers will not improve your score.\n\n");
+        printf("Your Translation");
+        if (currententry->hint) printf(" (or 'h' for hint)");
+        printf(":\n\n\t");
         gettextfromkeyboard(youranswer,MAXTEXTLENGTH);
+
+        if (currententry->hint) //if there's a hint available...
+        {
+            usedhint=0;
+            if (!strcmp(youranswer,"h")) //...if it is used...
+            {
+                usedhint = 1; //...mark as used
+                printf("\nHINT: %s\n\nYour Translation:\n\n\t",currententry->hint); //display hint
+                gettextfromkeyboard(youranswer,MAXTEXTLENGTH); //prompt for answer
+            }
+        }
+
         if (!strcmp(youranswer,currententry->answer))//if you're right
         {
-            printf("Yay!\n");
+            if(usedhint)
+            {
+                printf("\nWell done. See if you can remember without the hint next time...\n");
+                
+                currententry->right = currententry->counter = 1;
+                if (currentlist==&old)
+                {
+                    removefromlist(currententry,currentlist,0);
+                    printf("It will be brought up a couple more times to help you remember it.\n");
+                    addtolist(currententry,&known);
+                }
+            }
+            else
+            {
+                printf("Yay!\n");
 
-            if(currententry->right) currententry->counter++;
-            else currententry->right = currententry->counter = 1;
-            if (currententry->counter>2) printf("You answered correctly the last %i times in a row!\n",currententry->counter);
-        
+                if(currententry->right) currententry->counter++;
+                else currententry->right = currententry->counter = 1;
+                if (currententry->counter>2) printf("You answered correctly the last %i times in a row!\n",currententry->counter);
+            }
+
             //make comments based on how well it's known, and move to a higher list if appropriate
             if (currentlist==&n2l && currententry->counter>=N2LTONORM)
             {
                 removefromlist(currententry,currentlist,0);
                 printf("Looks like you know this one a little better now!\nIt will be brought up less frequently.\n");
-                currententry->counter = 0;
+                currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
             if (currentlist==&norm && currententry->counter>=NORMTOKNOWN)
             {
                 removefromlist(currententry,currentlist,0);
                 printf("Looks like you know this one now!\nIt will be brought up much less frequently.\n");
-                currententry->counter = 0;
+                currententry->counter = 1;
                 addtolist(currententry,&known);
             }
             if (currentlist==&known && currententry->counter>=KNOWNTOOLD)
             {
                 removefromlist(currententry,currentlist,0);
                 printf("OK! So this one's well-learnt.\nIt probably won't be brought up much any more.\n");
-                currententry->counter = 0;
+                currententry->counter = 1;
                 addtolist(currententry,&old);
             }
         }
@@ -456,92 +676,43 @@ void testme()
             {
                 removefromlist(currententry,currentlist,0);
                 printf("This one could do with some learning...\n");
-                currententry->counter = 0;
+                currententry->counter = 1;
                 addtolist(currententry,&n2l);
             }
             if (currentlist==&known && currententry->counter>=KNOWNTONORM)
             {
                 removefromlist(currententry,currentlist,0);
                 printf("OK, perhaps you don't know this one as well as you once did...\n");
-                currententry->counter = 0;
+                currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
             if (currentlist==&old && currententry->counter>=OLDTONORM)
             {
                 removefromlist(currententry,currentlist,0);
                 printf("This old one caught you out, huh? It will be brought up a few more times to help you remember it.\n");
-                currententry->counter = 0;
+                currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
         }
 
-        //debug:fprintf(stderr,"Tested, options menu?\n");
+        printf("Your score is now %.1f%%.\n",calculatescore(0));
         printf("Type 'o' for options or strike enter for another question\n");
         testmenuchoice = getchar();
-        //debug:fprintf(stderr,"Got choice\n");
         if (tolower(testmenuchoice)=='o') bringupmenu = 1;
-        //debug:fprintf(stderr,"set menuflag\n");
         if (testmenuchoice!='\n') clearinputbuffer();
-        //debug:fprintf(stderr,"cleared getchar\n");
         while (bringupmenu)
         {
-            clrscr();
-            printf("Current Entry:\n\nQuestion: %s\nAnswer: '%s'\n",currententry->question,currententry->answer);
-            if (currententry->info) printf("Info: %s\n",currententry->info); else printf("No info.\n");
-            if (currententry->hint) printf("Hint: %s\n\n",currententry->hint); else printf("No hint.\n\n");
-            printf("Options Menu:\n\nType q to modify the question phrase displayed for translation.\nType a to change the answer phrase you must provide.\nType i to add/modify additional info for this entry.\nType h to add/modify the hint for this entry.\nType p to mark this entry as high priority to learn.\nType d to delete this entry from the database.\nType x to end testing and return to the main menu.\n\n");
-            testmenuchoice=getchar();
-            clearinputbuffer();
-            switch (testmenuchoice)
+            menuresult = editormenu(currententry,1);
+            switch (menuresult)
             {
-                case 'q': printf("Enter new question text for this entry (max %i chars):\n",maxtextlength);
-                           currententry->question=gettextfromkeyboard(currententry->question,MAXTEXTLENGTH);
-                           break;
-                case 'a': printf("Enter new answer text for this entry (max %i chars):\n",maxtextlength);
-                           currententry->answer=gettextfromkeyboard(currententry->answer,MAXTEXTLENGTH);
-                           break;
-                case 'i': printf("Enter new info for this entry (max %i chars):\n",maxtextlength);
-                           currententry->info=gettextfromkeyboard(currententry->info,MAXTEXTLENGTH);
-                           break;
-                case 'h': printf("Enter new hint for this entry (max %i chars):\n",maxtextlength);
-                           currententry->hint=gettextfromkeyboard(currententry->hint,MAXTEXTLENGTH);
-                           break;
-                case 'p': if(currentlist==&n2l)printf("Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
-                           else
-                           {
-                               removefromlist(currententry,currentlist,0);
-                               currententry->counter = 0;
-                               currentlist=&n2l;
-                               addtolist(currententry,currentlist);
-                               printf("Entry will be brought up more often\n");
-                           }
-                           break;
-                case 'd': printf("Are you sure you want to delete this entry?\nOnce you save, this will be permanent!(y/n)");
-                           if (getyesorno()) {removefromlist(currententry,currentlist,1);printf("Entry deleted!\n");bringupmenu=0;}
-                           else printf("Entry was NOT deleted.\n");
-                           break;
-                case 'x': bringupmenu = testagain = 0;
-                           break;
-                default: printf("Invalid choice.\n");
-            }
-            if (bringupmenu)
-            {
-                printf("Select again from the options menu? (y/n)");
-                bringupmenu = getyesorno();
-            }
-            if (!bringupmenu&&testagain)
-            {
-                printf("Continue testing? (y/n)");
-                testagain = getyesorno();
+                case -1: bringupmenu=testagain=0;break;
+                case  0: bringupmenu=0;break;
+                default: continue;
             }
         }
-        //debug:fprintf(stderr,"End of 'testagain' loop.\n Clearing Screen...");
-//        system("cls");
         clrscr();
-//        printf("\f");
     }
     free(youranswer);
-//    getchar();
     return;
 }
 
@@ -549,12 +720,12 @@ char * gettextfromkeyboard(char * target,int maxchars)
 {
     int i =0;
     int memoryallocated_flag =0; //to avoid freeing memory allocated outside function, pointed out by stackoverflow.com/users/688213/mrab
-    char ch;//debug:fprintf(stderr,"gettextfromkeyboard started line %i",__LINE__);
+    char ch;
     if (!target)//if no memory already allocated (pointer is NULL), do it now
     {
-        memoryallocated_flag=1;//debug:printf("%i",__LINE__);
-        target=(char *)malloc(maxchars+1);//debug:printf("%i",__LINE__);
-        if (!target) {printf("Memory allocation failed!");return NULL;} //debug:printf("%i",__LINE__);//return null if failed
+        memoryallocated_flag=1;
+        target=(char *)malloc(maxchars+1);
+        if (!target) {printf("Memory allocation failed!");return NULL;}//return null if failed
     }
     ch = getchar();
     if (ch=='\n' && memoryallocated_flag) {free(target);return NULL;}//if zero length, free mem (if allocated inside function) and return null pointer
@@ -578,17 +749,11 @@ int getyesorno()
     while (toupper(yesorno)!='Y'&&toupper(yesorno)!='N')
     {
         yesorno=getchar();
+        clearinputbuffer();
         if (toupper(yesorno)!='Y'&&toupper(yesorno)!='N') printf("Invalid choice. You must enter Y or N:\n");
     }
-    clearinputbuffer();
     if (toupper(yesorno)=='Y') return 1;
     else return 0;
-}
-
-void wank()
-{
-    printf("%i",((rand()%13)+1));
-    getchar();
 }
 
 void clrscr()
@@ -598,15 +763,75 @@ void clrscr()
 
 void clearinputbuffer()
 {
-//    while (getchar()!='\n') getchar();
     char tempchar;
     if (getchar()=='\n') return;
     else while (1)
     {
         tempchar = getchar();
         if (tempchar=='\n') break;
-    } //FISH TODO
+    }
     return;
+}
+
+float calculatescore(int showstats)//returns overall idea of progress as percentage, displays screenful of stats if 'showstats' is true
+{
+    struct vocab * entry,* bestrunentry = NULL,* worstrunentry = NULL;
+    struct listinfo * list;
+    int i,count=0,knowntotal=0,infos=0,hints=0,untested=0,rights=0,wrongs=0,bestrun=0,worstrun=0;
+    float score;
+    for (i = 0;i<=3;i++)
+    {
+        switch (i)
+        {
+            case 0: list = &n2l;break;
+            case 1: list = &norm;break;
+            case 2: list = &known;break;
+            case 3: list = &old;break;
+            default: fprintf(stderr,"Loop Error!\n");break;
+        }
+        entry = list->head;
+        while (entry!=NULL)
+        {
+            count++;
+            knowntotal += entry->known;
+            if (showstats)
+            {
+                if (entry->info) infos++;
+                if (entry->hint) hints++;
+                if (entry->counter==0) untested++;
+                else if (entry->right) rights++;
+                else wrongs++;
+                if (entry->right && entry->counter > bestrun)
+                {
+                    bestrun = entry->counter;
+                    bestrunentry = entry;
+                }
+                if ((!(entry->right)) && entry->counter > worstrun)
+                {
+                    worstrun = entry->counter;
+                    worstrunentry = entry;
+                }
+            }
+            entry=entry->next;
+        }
+    }
+    if (!count) {printf("No entries in list!");clearinputbuffer();return 0;}
+    score = ((float)knowntotal / (3*(float)count))*100;
+    if (showstats)
+    {
+        clrscr();
+        printf("Your current stats:\n\nYour current score: %.1f%%\n\nThere are presently %i entries loaded.\n\n",score,count);
+        if (untested) printf("%d of these you've never been tested on.\n",untested);
+        else printf("You've been tested on all of them at least once.\n");
+        printf("%i of these you got RIGHT the last time they came up.\n",rights);
+        printf("%i of these you got WRONG the last time they came up.\n\n",wrongs);
+        printf("%i loaded entries have additional info.\n",infos);
+        printf("%i loaded entries have an associated hint.\n\n",hints);
+        if (bestrun) printf("Your longest run of consecutive right answers is currently '%s', which you got right the last %i times.\n\n",bestrunentry->question,bestrun);
+        if (worstrun) printf("Your longest run of consecutive wrong answers is currently '%s', which you got wrong the last %i times.\n\n",worstrunentry->question,worstrun);
+        clearinputbuffer();
+    }
+    return score;
 }
 
 int main(int argc, char* argv[])
@@ -617,28 +842,28 @@ int main(int argc, char* argv[])
     srand((unsigned)time(NULL));
 
     clrscr();
-    //debug:fprintf(stderr,"Start...\n");
     loaddatabase();
-    while (menuchoice!='x')
+    printf("Welcome to the ");
+    while (tolower(menuchoice)!='x')
     {
-        printf("Welcome to the Vocab Test, version C!\n\nMain menu:\n\n\tt: Test Me!\n\ts: Save\n\tx: Exit\n\n");
+        printf("Vocab Test, Version C.\n\nMain Menu:\n\n\tv: View Statistics\n\tt: Test Me!\n\tl: Load\n\tm: Manage Database\n\ts: Save\n\tx: Exit\n\n");
         menuchoice = getchar();
         if (menuchoice!='\n') clearinputbuffer();
         switch (tolower(menuchoice))
         {
             case 'x': break;
+            case 'v': calculatescore(1);break;
             case 't': testme(); break;
-            case 's': savedatabase();break;
+            case 's': clrscr();savedatabase();break;
+            case 'l': clrscr();reloaddatabase();break;
+            case 'm': databasemenu(); break;
             default: printf("Invalid choice. Please try again.\n"); clearinputbuffer(); break;
         }
         clrscr();
     }
 
-
-    clrscr();
     printf("Bye for now!\n\nPress enter to exit.");
-    getchar();
+    clearinputbuffer();
     clrscr();
-    //debug:fprintf(stderr,"Successfully closed\n");
     return 0;
 }
