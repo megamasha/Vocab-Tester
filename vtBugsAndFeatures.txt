@@ -9,7 +9,7 @@ Vocab Tester:
 :-) calculate score
 :-) look into .csv file loading
 :-) validate filenames
-    Ask about saving on exit
+:-) Ask about saving on exit
     Save to most recently opened database
     Find and edit (including delete) entries from the database manager
     Can list selection be done with a switch and ranges?

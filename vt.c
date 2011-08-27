@@ -48,6 +48,7 @@ int maxtextlength = MAXTEXTLENGTH; //allows use of this #define within text stri
 FILE * inputfile = NULL;
 FILE * outputfile = NULL;
 struct listinfo n2l, norm, known, old;
+int changedflag = 0;
 
 void loaddatabase();//select which database to load and pass it to getrecordsfromfile
 char * validfilename (char * filename, char * extension);//filename validation
@@ -386,10 +387,11 @@ void savedatabase()
     printf("WARNING: If you provide a database filename that already exists,\nthe database will be OVERWRITTEN!\n\nSave to default database: %s? (y/n)",outputfilename);
     if (!getyesorno())//user specifies filename for database output
     {
-        printf("A .~sv file will be saved to the filename you provide.\nPlease enter the filename, ending in '.~sv':\n");
-        outputfilename=validfilename(gettextfromkeyboard(outputfilename,MAXTEXTLENGTH),"~sv"); //FISH! TODO filename validation
+        printf("A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
+        outputfilename=validfilename(gettextfromkeyboard(outputfilename,MAXTEXTLENGTH),".~sv"); //FISH! TODO filename validation
     }
     if (!writeliststofile(outputfilename)) printf("Error while saving!!\n"); //print error message if writeliststofile returned 0
+    else changedflag = 0;
     free(outputfilename);
     clearinputbuffer();
 }
@@ -431,7 +433,7 @@ int writeliststofile(char * outputfilename)
             }
         }
         fclose(outputfile);
-        printf("...finished. %i entries saved.\n",counter);
+        printf("...finished. %i entries saved to file: %s\n",counter,outputfilename);
         return 1;
     }
 }
@@ -447,11 +449,11 @@ void databasemenu()//provides ability to add entries to database, and edit entri
         clearinputbuffer();
         switch (menuchoice)
         {
-            case 'a': if (createnewvocab()) {printf("Vocab successfully added.");clearinputbuffer();}
+            case 'a': if (createnewvocab()) {changedflag = 1;printf("Vocab successfully added.");clearinputbuffer();}
                       else {printf("Vocab creation failed!");clearinputbuffer();}
                       break;
-            case 'e': printf("Todo!");clearinputbuffer();break;//FISH! TODO
-            case 'd': printf("Todo!");clearinputbuffer();break;//FISH! TODO
+            case 'e': changedflag = 1;printf("Todo!");clearinputbuffer();break;//FISH! TODO
+            case 'd': changedflag = 1;printf("Todo!");clearinputbuffer();break;//FISH! TODO
             case 'x': break;
             default: printf("Invalid choice. Please try again\n");clearinputbuffer();
         }
@@ -516,6 +518,7 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
     struct listinfo * list;
     char optionsmenuchoice = '\n';
     int showagain = 1;
+    changedflag = 1;
     clrscr();
     if (entry->known==0) list = &n2l;
     else if (entry->known==1) list = &norm;
@@ -627,6 +630,7 @@ void testme()
             if (currententry==NULL) {printf("Indexing error!\nCurrent list selector: %i, entries: %i, entry selector: %i\n",list_selector,currentlist->entries,entry_selector);free(youranswer);return;}//in case not found in list
         }
 
+        changedflag = 1;
         printf("Translate the following:\n\n\t%s\n\n",currententry->question);
         if (!currententry->info) printf("There is no additional information for this entry.\n");
         else printf("Useful Info: %s\n\n",currententry->info);
@@ -890,6 +894,12 @@ int main(int argc, char* argv[])
             default: printf("Invalid choice. Please try again.\n"); clearinputbuffer(); break;
         }
         clrscr();
+    }
+
+    if (changedflag)
+    {
+        printf("Your database has changed (or you have given more correct/incorrect answers) since you last saved.\nIf you continue without saving, these changes will be lost!\n\nSave now? (y/n)");
+        if (getyesorno()) savedatabase();
     }
 
     printf("Bye for now!\n\nPress enter to exit.");
