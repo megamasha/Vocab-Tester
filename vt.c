@@ -47,9 +47,10 @@ struct listinfo//struct holds head, tail and the number of entries for the n2l, 
 int maxtextlength = MAXTEXTLENGTH; //allows use of this #define within text strings
 FILE * inputfile = NULL;
 FILE * outputfile = NULL;
-static struct listinfo n2l, norm, known, old;
+struct listinfo n2l, norm, known, old;
 
 void loaddatabase();//select which database to load and pass it to getrecordsfromfile
+char * validfilename (char * filename, char * extension);//filename validation
 void getrecordsfromfile(char * inputfilename,char separator);//load a file into memory
 char * readtextfromfile(int maxchars,char separator);//get text field from file
 int readnumberfromfile(int maxvalue,char separator);//get integer field from file
@@ -73,6 +74,9 @@ float calculatescore(int showstats);//returns overall idea of progress as percen
 void loaddatabase()//select which database to load
 {
     char separator = '~';
+    char * tildesep = ".~sv";
+    char * commasep = ".csv";
+    char * extension = tildesep;
     char * deffilename = DINPUTFILENAME;
     char * inputfilename = (char *)malloc(MAXTEXTLENGTH+1);
     if (!inputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
@@ -91,6 +95,7 @@ void loaddatabase()//select which database to load
             if (getyesorno()) //import .csv file
             {
                 separator = ',';
+                extension = commasep;
                 printf("Enter name of .csv file to import:\n");
             }
             else //not loading a file
@@ -100,10 +105,35 @@ void loaddatabase()//select which database to load
                 return;
             }
         }
-        gettextfromkeyboard(inputfilename,MAXTEXTLENGTH);
+        inputfilename=validfilename(gettextfromkeyboard(inputfilename,MAXTEXTLENGTH),extension);
     }
     getrecordsfromfile(inputfilename,separator);
     free(inputfilename);
+}
+
+char * validfilename (char * filename, char * extension)//filename validation
+{
+    int i, j=0, alreadyvalid=1;
+    //check filename is longer than the extension
+    if (strlen(filename)>strlen(extension))
+    {
+        //if so, see if string already contains given extension
+        for(i=0;i<=strlen(extension);i++)
+        {
+            if (filename[(strlen(filename))-i]!=extension[(strlen(extension))-i]) alreadyvalid=0;
+        }
+        if (alreadyvalid) return filename;//is valid filename, return it
+    }
+    //find first 'dot' or null in string to append file extension (first character can be dot for hidden unix files)
+    for (i=1;filename[i]!='.'&&i<strlen(filename);i++);
+    //add extension and return result
+    while (i<MAXTEXTLENGTH && j<=strlen(extension))
+    {
+        filename[i]=extension[j];
+        i++;j++;
+    }
+    if (i==MAXTEXTLENGTH) fprintf(stderr,"Filename reached maximum length including extension, possibly truncated!\n");
+    return filename;
 }
 
 void getrecordsfromfile(char * inputfilename,char separator)
@@ -113,7 +143,7 @@ void getrecordsfromfile(char * inputfilename,char separator)
     struct listinfo * newvocablist;
     if (!(inputfile = fopen(inputfilename, "r")))
     {
-        printf("Unable to read input file. File does not exist or is in use.\n");
+        fprintf(stderr,"Unable to read input file'%s'. File does not exist or is in use.\n",inputfilename);
     }    
     else
     {
@@ -357,7 +387,7 @@ void savedatabase()
     if (!getyesorno())//user specifies filename for database output
     {
         printf("A .~sv file will be saved to the filename you provide.\nPlease enter the filename, ending in '.~sv':\n");
-        gettextfromkeyboard(outputfilename,MAXTEXTLENGTH); //FISH! TODO filename validation
+        outputfilename=validfilename(gettextfromkeyboard(outputfilename,MAXTEXTLENGTH),"~sv"); //FISH! TODO filename validation
     }
     if (!writeliststofile(outputfilename)) printf("Error while saving!!\n"); //print error message if writeliststofile returned 0
     free(outputfilename);
