@@ -44,11 +44,18 @@ struct listinfo//struct holds head, tail and the number of entries for the n2l, 
     struct vocab * tail;
 };
 
+struct fuzzymatch
+{
+    struct vocab * entry;
+    int score;
+};
+
 int maxtextlength = MAXTEXTLENGTH; //allows use of this #define within text strings
 FILE * inputfile = NULL;
 FILE * outputfile = NULL;
 struct listinfo n2l, norm, known, old;
 int changedflag = 0;
+char * currentfilename = NULL;
 
 void loaddatabase();//select which database to load and pass it to getrecordsfromfile
 char * validfilename (char * filename, char * extension);//filename validation
@@ -64,6 +71,8 @@ void savedatabase();//does what it says on the tin, optionally allows user to gi
 int writeliststofile(char * outputfilename);//output a file from memory to disk
 void databasemenu();//provides ability to add entries to database, and edit entries from outside testing mode
 struct vocab * createnewvocab();//allows user to create now vocab record within the program
+struct vocab * vocabsearch(char * searchstring);//returns a pointer to vocab entry if the question or answer matches given search string
+struct vocab * vocabfuzzysearch(char * searchstring);//returns a pointer to a user-selected vocab entry out of a list of up to 10 possible suggestions
 int editormenu(struct vocab * entry, int fromtest);//shows menu to edit current entry, fromtest is 1 when run from within the test and 0 when from the menu, returns 1 to be run again, 0 to continue without the menu or -1 to return to the main menu
 void testme();//main code for learning vocab, including options menu
 char * gettextfromkeyboard(char * target,int maxchars);//set given string (char pointer) from keyboard, allocating memory if necessary
@@ -109,6 +118,8 @@ void loaddatabase()//select which database to load
         inputfilename=validfilename(gettextfromkeyboard(inputfilename,MAXTEXTLENGTH),extension);
     }
     getrecordsfromfile(inputfilename,separator);
+    inputfilename=validfilename(inputfilename,".~sv");
+    strcpy(currentfilename,inputfilename);
     free(inputfilename);
 }
 
@@ -384,11 +395,19 @@ void savedatabase()
     printf("Saving...\n");
     if (!outputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
     strcpy(outputfilename,deffilename);
-    printf("WARNING: If you provide a database filename that already exists,\nthe database will be OVERWRITTEN!\n\nSave to default database: %s? (y/n)",outputfilename);
-    if (!getyesorno())//user specifies filename for database output
+    printf("WARNING: If you provide a database filename that already exists,\nthe database will be OVERWRITTEN!\n\nSave to most recently lodaded database: %s? (y/n)",currentfilename);
+    if(getyesorno())
     {
-        printf("A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
-        outputfilename=validfilename(gettextfromkeyboard(outputfilename,MAXTEXTLENGTH),".~sv"); //FISH! TODO filename validation
+        strcpy(outputfilename,currentfilename);
+    }
+    else
+    {
+        printf("Save to default database: %s? (y/n)",outputfilename);
+        if (!getyesorno())//user specifies filename for database output
+        {
+            printf("A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
+            outputfilename=validfilename(gettextfromkeyboard(outputfilename,MAXTEXTLENGTH),".~sv");
+        }
     }
     if (!writeliststofile(outputfilename)) printf("Error while saving!!\n"); //print error message if writeliststofile returned 0
     else changedflag = 0;
@@ -440,24 +459,43 @@ int writeliststofile(char * outputfilename)
 
 void databasemenu()//provides ability to add entries to database, and edit entries from outside testing mode
 {
+    struct vocab * entry;
     char menuchoice = '\n';
+    int menuresult=1;
+    char * searchstring = (char *)malloc(MAXTEXTLENGTH+1);
+    if (!searchstring) {fprintf(stderr,"Unable to allocate memory!\n");exit(1);}
     while (menuchoice!='x')
     {
+        entry = NULL;
         clrscr();
-        printf("Vocab database management menu:\n\n\ta: Add vocab\n\te: Edit vocab\n\td: Delete vocab\n\tx: Exit to main menu\n\n");
+        printf("Vocab database management menu:\n\n\ta: Add vocab\n\te: Edit or delete vocab\n\tx: Exit to main menu\n\n");
         menuchoice = getchar();
         clearinputbuffer();
         switch (menuchoice)
         {
-            case 'a': if (createnewvocab()) {changedflag = 1;printf("Vocab successfully added.");clearinputbuffer();}
-                      else {printf("Vocab creation failed!");clearinputbuffer();}
+            case 'a': if (createnewvocab()) {changedflag = 1;printf("Vocab successfully added.");}
+                      else printf("Vocab creation failed!");
+                      clearinputbuffer();
                       break;
-            case 'e': changedflag = 1;printf("Todo!");clearinputbuffer();break;//FISH! TODO
-            case 'd': changedflag = 1;printf("Todo!");clearinputbuffer();break;//FISH! TODO
+            case 'e': changedflag = 1;printf("Entry to edit or delete:");
+                searchstring=gettextfromkeyboard(searchstring,MAXTEXTLENGTH);
+                if (searchstring) entry = vocabsearch(searchstring);
+                if (entry!=NULL)
+                {
+                    menuresult=1;
+                    while (menuresult==1)
+                    {
+                        menuresult = editormenu(entry,0);
+                    }
+                    if (menuresult==-1) {free(searchstring);return;}
+                }
+                else printf("No entry selected\n");
+                clearinputbuffer();break;
             case 'x': break;
             default: printf("Invalid choice. Please try again\n");clearinputbuffer();
         }
     }
+    free(searchstring);
 }
 
 struct vocab * createnewvocab()//allows user to create now vocab record within the program
@@ -506,11 +544,148 @@ struct vocab * createnewvocab()//allows user to create now vocab record within t
         if (newvocab->question==NULL||newvocab->answer==NULL) //minimal validation for valid record
         {
             fprintf(stderr,"ERROR: Question and/or answer are blank!\n");
+            return NULL;
         }
 
         if (addtolist(newvocab,newvocablist)) return newvocab;
         else return NULL;
     }
+}
+
+struct vocab * vocabsearch(char * searchstring)//returns a pointer to vocab entry if the question or answer matches given search string
+{
+    struct vocab * entry = NULL, * match = NULL;
+    struct listinfo * list = NULL;
+    int i,numberofmatches=0;
+    for (i=0;i<=3;i++)
+    {
+        switch (i)
+        {
+            case 0: list = &n2l;break;
+            case 1: list = &norm;break;
+            case 2: list = &known;break;
+            case 3: list = &old;break;
+            default: printf("Loop Error!\n");break;
+        }
+        entry=list->head;
+        while (entry!=NULL)
+        {
+            if (!strcmp(entry->question,searchstring))
+            {
+                match = entry;
+                numberofmatches++;
+            }
+            entry=entry->next;
+        }
+    }
+    for (i=0;i<=3;i++)
+    {
+        switch (i)
+        {
+            case 0: list = &n2l;break;
+            case 1: list = &norm;break;
+            case 2: list = &known;break;
+            case 3: list = &old;break;
+            default: printf("Loop Error!\n");break;
+        }
+        entry=list->head;
+        while (entry!=NULL)
+        {
+            if (!strcmp(entry->answer,searchstring))
+            {
+                match = entry;
+                numberofmatches++;
+            }
+            entry=entry->next;
+        }
+    }
+    if (numberofmatches == 1) return match;
+    else if (numberofmatches)
+    {
+        printf("More than one match found. Show best matches? (y/n)");
+        if (getyesorno()) return vocabfuzzysearch(searchstring);
+    }
+    else
+    {
+        printf("No exact matches found. Perform fuzzy search? (y/n)");
+        if (getyesorno()) return vocabfuzzysearch(searchstring);
+    }
+    return NULL;
+}
+
+struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab entry that has the largest number of innitial, non case-sensitive characters
+{
+    struct vocab * entry;
+    struct fuzzymatch matches[10];
+    struct fuzzymatch * worstmatch = &matches[0];
+    struct listinfo * list;
+    int i,j,matchescounter=0,currentscore=0;
+    int substringlength[2];//FISH! TODO Can the separate while loops below be combined using 'substringlength++'?
+
+    //innitialise all fuzzymatches.
+    for(i=0;i<10;i++) {matches[i].entry = NULL;matches[i].score = 0;}
+
+    //cycle through all entries...
+    for (i=0;i<=3;i++)
+    {
+        switch (i)
+        {
+            case 0: list = &n2l;break;
+            case 1: list = &norm;break;
+            case 2: list = &known;break;
+            case 3: list = &old;break;
+            default: printf("Loop Error!\n");break;
+        }
+        entry=list->head;
+        while (entry!=NULL)
+        {
+            //...giving them a score based on...
+            currentscore=0;
+            //...containing the search string (strstr, +10 points)...
+            if((!strcmp(searchstring,entry->question))||(!strcmp(searchstring,entry->answer))) currentscore += 10;
+            //...two extra points for each sequential letter (starting from the beginning of searchstring) that is contained IN ORDER in the entry (strncmp)...
+            substringlength[0]=strlen(searchstring);//check question string
+            while (strncmp(searchstring,entry->question,(size_t)substringlength[0]))
+            {
+                substringlength[0]--;
+                if(!substringlength[0])break;
+            }
+            substringlength[1]=strlen(searchstring);//check answer string;
+            while (strncmp(searchstring,entry->question,(size_t)substringlength[1]))
+            {
+                substringlength[1]--;
+                if(!substringlength[1])break;
+            }
+            currentscore= (substringlength[0]>substringlength[1]) ? (currentscore+=(2*substringlength[0])) : (currentscore+=(2*substringlength[1]));//increment currentscore by two times the greater of the two substringlengths
+            //...and an extra point for each sequential letter (once again from the beginning of searchstring) that appears REGARDLESS OF POSITION in the entry (strspn).
+            currentscore+=strspn(searchstring,entry->question);
+            currentscore+=strspn(searchstring,entry->answer);
+
+            //if the score is greater than the lowest score currently in the matches[] array, overwrite the lowest scored match in the array with a pointer to this.
+            if (currentscore>worstmatch->score)
+            {
+                worstmatch->score=currentscore;
+                worstmatch->entry=entry;
+                //set worstmatch to match with new worst score
+                for(j=0;j<10;j++) if(worstmatch->score > matches[j].score) worstmatch = &matches[j];
+            }
+            entry=entry->next;
+        }
+    }
+    //display numbered list of questions and answers for these matches, asking the user to decide which they'd like to select (0 for none)
+    for(i=0;i<10;i++)
+    {
+        if (matches[i].entry)
+        {
+            printf("Option %d: Question: '%s'.\n",(i+1),matches[i].entry->question);
+            printf("Score: %i. Answer: '%s'.\n",matches[i].score,matches[i].entry->answer);
+        }
+    }
+    printf("\nEnter the number of the entry you'd like to select, or 0 (zero) to cancel:");
+    scanf("%d",&i);//FISH! TODO Validate!! (by some cumbersomely elaborate function or other)
+    if(i<1||i>10) return NULL;
+    //return a pointer to the user's choice
+    else return matches[i-1].entry;
 }
 
 int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current entry, fromtest is 1 when run from within the test and 0 when from the menu, returns 1 to show menu again, 0 to close the menu or -1 to return to the main menu
@@ -519,6 +694,7 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
     char optionsmenuchoice = '\n';
     int showagain = 1;
     changedflag = 1;
+    if (entry==NULL) {fprintf(stderr,"Somehow received blank entry! Fix me.\n");return 0;}
     clrscr();
     if (entry->known==0) list = &n2l;
     else if (entry->known==1) list = &norm;
@@ -598,12 +774,12 @@ void testme()
         clrscr();
 
         //select a list at random, using the percentage probabilities in the if statements.
-        //FISH! Can this be done with a switch and ranges?
         list_selector = (rand() % 100)+1;
-        if (list_selector<33) currentlist = &n2l;
-        if (list_selector>32&&list_selector<95) {n2l_flag=0;currentlist=&norm;} //use norm list and cancel n2l flag (not cancelled with other lists)
-        if (list_selector>94&&list_selector<100) currentlist = &known;
-        if (list_selector==100) currentlist = &old;
+        if (list_selector>100) {fprintf(stderr,"Problem with random number generator. Fix it!");exit(1);}
+        else if (list_selector==100) currentlist = &old;
+        else if (list_selector>94) currentlist = &known;
+        else if (list_selector>32) {n2l_flag=0;currentlist=&norm;} //use norm list and cancel n2l flag (not cancelled with other lists)
+        else if (list_selector<33) currentlist = &n2l;
 
         //do a little control over random selection
         if (currentlist==&n2l && n2l_flag)
@@ -872,6 +1048,7 @@ int main(int argc, char* argv[])
 {
     n2l.entries = norm.entries = known.entries = old.entries = 0;
     char menuchoice = '\0';
+    currentfilename = (char*)malloc(MAXTEXTLENGTH+1);
 
     srand((unsigned)time(NULL));
 
@@ -902,6 +1079,8 @@ int main(int argc, char* argv[])
         if (getyesorno()) savedatabase();
     }
 
+    if (currentfilename) free(currentfilename);
+    currentfilename=NULL;
     printf("Bye for now!\n\nPress enter to exit.");
     clearinputbuffer();
     clrscr();

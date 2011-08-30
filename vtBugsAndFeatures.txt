@@ -10,6 +10,15 @@ Vocab Tester:
 :-) look into .csv file loading
 :-) validate filenames
 :-) Ask about saving on exit
-    Save to most recently opened database
-    Find and edit (including delete) entries from the database manager
-    Can list selection be done with a switch and ranges?
+:-) Can list selection be done with a switch and ranges? No it can't (not in C anyway).
+:-) Save to most recently opened database
+:-) Find and edit (including delete) entries from the database manager
+
+Potential improvements:
+
+    getc returns int, but return value is stored as char, leading to potential EOF error. Fix.
+    vocabfuzzysearch is case sensitive
+    Test is currently (by design) case sensitive. An option could be added to make it case insensitive
+    scanf, as used in vocabfuzzysearch is hideously unstable, and can cause unexpected results or crashes if a letter or other unexpected input is entered. Could be replaced with proper validation function.
+    Can the separate while loops at lines 648 and 654 be combined using 'substringlength++'?
+    if the default and most recently loaded databases are the same, the user is effectively asked the same thing twice
