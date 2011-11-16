@@ -185,6 +185,7 @@ void getrecordsfromfile(char * inputfilename,char separator)
                     case 1: newvocablist = &norm;break;
                     case 2: newvocablist = &known;break;
                     case 3: newvocablist = &old;break;
+                    default: {newvocablist = &n2l;fprintf(stderr,"invalid known level! Defaulting to 0");} //lack of this line was found when programming version 2 in Qt. Now backported :-)
                 }
 
                 addtolist(newvocab,newvocablist);
